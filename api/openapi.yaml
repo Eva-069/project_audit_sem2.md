@@ -1,0 +1,256 @@
+openapi: 3.0.3
+info:
+  title: CoworkSpace — Feature 1 Reminders API
+  description: API контракт для фічі "Нагадування за годину до початку бронювання"
+  version: 1.0.0
+  contact:
+    name: КВ14736512
+
+servers:
+  - url: http://localhost:4000
+    description: Local development server
+
+tags:
+  - name: reminders
+    description: Операції з нагадуваннями
+
+paths:
+  /api/v1/bookings/{booking_id}/reminder:
+    post:
+      tags: [reminders]
+      summary: Створити нагадування для бронювання
+      description: >
+        Якщо до початку >= 60 хвилин — статус scheduled (чекає).
+        Якщо до початку < 60 хвилин — надсилає одразу, статус sent.
+      operationId: createReminder
+      security:
+        - BearerAuth: [bookings:write]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: bkg_a1b2c3d4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReminderRequest"
+      responses:
+        "201":
+          description: Нагадування створено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "400":
+          description: Невалідні вхідні дані
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Не авторизований
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Немає прав на це бронювання
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Бронювання не знайдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Нагадування вже існує або бронювання скасоване
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    get:
+      tags: [reminders]
+      summary: Отримати нагадування для бронювання
+      description: Повертає поточне нагадування без PII даних користувача.
+      operationId: getReminder
+      security:
+        - BearerAuth: [bookings:read]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Деталі нагадування
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "401":
+          description: Не авторизований
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Немає прав
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Нагадування або бронювання не знайдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    patch:
+      tags: [reminders]
+      summary: Скасувати нагадування
+      description: >
+        Дозволяє перевести нагадування в статус cancelled.
+        Не можна скасувати вже надіслане нагадування (sent).
+      operationId: patchReminder
+      security:
+        - BearerAuth: [bookings:write]
+      parameters:
+        - name: booking_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchReminderRequest"
+      responses:
+        "200":
+          description: Статус нагадування оновлено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReminderResponse"
+        "400":
+          description: Невалідний статус
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Не авторизований
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Немає прав
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Нагадування не знайдено
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Неможливо скасувати — нагадування вже надіслано
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    CreateReminderRequest:
+      type: object
+      required: [channel]
+      properties:
+        channel:
+          type: string
+          enum: [email]
+          description: Канал надсилання — зараз підтримується тільки email
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Додатковий текст повідомлення (опційно)
+
+    PatchReminderRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [cancelled]
+          description: Єдиний дозволений перехід через API — скасування
+
+    ReminderResponse:
+      type: object
+      properties:
+        reminder_id:
+          type: string
+          example: rem_x1y2z3w4
+        booking_id:
+          type: string
+          example: bkg_a1b2c3d4
+        status:
+          type: string
+          enum: [scheduled, sent, cancelled]
+        scheduled_at:
+          type: string
+          format: date-time
+          example: "2025-11-08T15:00:00Z"
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        channel:
+          type: string
+          enum: [email]
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [error_code, message]
+          properties:
+            error_code:
+              type: string
+              example: reminder_already_exists
+            message:
+              type: string
+              example: Нагадування для цього бронювання вже існує
+            details:
+              type: object
+              additionalProperties:
+                type: string
+            trace_id:
+              type: string
+              example: req_abc123
